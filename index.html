@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人生重開錶 — 迴圈控制系統</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --cold:   #b0ccd8;
+  --dim:    #4a7a8a;
+  --dark:   #1a3a4a;
+  --void:   #06080a;
+  --gr: #ff3344;
+  --gc: #00eeff;
+}
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+  background: var(--void);
+  color: var(--cold);
+  font-family: 'Courier New', monospace;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+/* scanlines */
+body::after {
+  content:''; position:fixed; inset:0;
+  background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.07) 2px,rgba(0,0,0,.07) 4px);
+  pointer-events:none; z-index:300;
+}
+
+/* ── LAYOUT ────────────────────────────────── */
+.left-panel {
+  width: 48%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-right: 1px solid #0e2530;
+}
+
+.right-panel {
+  width: 52%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 32px;
+  position: relative;
+}
+
+/* ── WATCH CANVAS ──────────────────────────── */
+#watchCanvas {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 1;
+}
+.watch-title {
+  font-size: 11px;
+  letter-spacing: 5px;
+  color: #3a6a7a;
+  text-transform: uppercase;
+  margin-top: 18px;
+}
+
+/* ── RIGHT: COUNTER SECTION ────────────────── */
+#counterSection {
+  width: 100%;
+  text-align: center;
+  transition: opacity .25s, transform .25s;
+}
+#counterSection.hidden { opacity:0; transform:translateY(16px); pointer-events:none; }
+
+.sys-header {
+  font-size: 9px; letter-spacing: 5px; color: #4a8090;
+  text-transform: uppercase; margin-bottom: 6px;
+}
+.frozen-date {
+  font-size: 22px; letter-spacing: 6px; color: #6aaabb; margin-bottom: 40px;
+}
+
+.ctr-label { font-size: 9px; letter-spacing: 5px; color: #4a8090; text-transform:uppercase; margin-bottom:4px; }
+#loopCounter {
+  font-size: clamp(72px,12vw,148px);
+  font-weight:900; line-height:1;
+  letter-spacing:-3px; color:var(--cold);
+  font-variant-numeric:tabular-nums;
+  display:inline-block;
+  animation: flicker 12s infinite;
+}
+@keyframes flicker {
+  0%,91%,100%{opacity:1}92%{opacity:.7}93%{opacity:1}96%{opacity:.5}97%{opacity:1}
+}
+.glitching { animation: glitch-a .18s steps(1) forwards !important; }
+@keyframes glitch-a {
+  0%  {transform:none;color:var(--cold);text-shadow:none;clip-path:none}
+  15% {transform:translate(-4px,0);color:var(--gr);text-shadow:4px 0 var(--gc);clip-path:inset(5% 0 88% 0)}
+  30% {transform:translate(4px,0);color:var(--gc);text-shadow:-4px 0 var(--gr);clip-path:inset(60% 0 25% 0)}
+  50% {transform:translate(-2px,0);color:var(--cold);text-shadow:2px 0 rgba(255,0,0,.4);clip-path:inset(25% 0 65% 0)}
+  70% {transform:translate(2px,0);color:#8affe8;clip-path:none}
+  100%{transform:none;color:var(--cold);text-shadow:none;clip-path:none}
+}
+.ctr-unit {
+  font-size:12px;letter-spacing:7px;color:#4a8090;text-transform:uppercase;margin-bottom:36px;
+}
+
+/* small clock face */
+.clock-wrap { margin: 0 auto 32px; width:72px; height:72px; }
+.clock-face {
+  width:72px;height:72px;border-radius:50%;
+  border:1px solid #162830;background:#07090b;
+  position:relative;
+  box-shadow:0 0 0 3px #0e1e28, 0 0 20px rgba(0,90,130,.08), inset 0 0 16px rgba(0,0,0,.6);
+}
+.hand { position:absolute;bottom:50%;left:50%;transform-origin:bottom center;border-radius:2px; }
+.hand-h{width:3px;height:16px;margin-left:-1.5px;background:#6ab0c0;}
+.hand-m{width:2px;height:24px;margin-left:-1px;background:#4a9aaa;}
+.hand-s{width:1px;height:30px;margin-left:-.5px;background:#2a7888;}
+.clock-dot{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:4px;height:4px;border-radius:50%;background:#3a7888;}
+
+/* status row */
+.stat-row { display:flex;justify-content:center;gap:36px;margin-bottom:40px; }
+.stat { text-align:center; }
+.stat-lbl { font-size:9px;letter-spacing:3px;color:#4a8090;text-transform:uppercase;margin-bottom:4px; }
+.stat-val { font-size:16px;letter-spacing:2px;color:#6aaabb; }
+.stat-val.null { color:#2a5060; }
+
+/* buttons */
+.btn-row { display:flex;gap:16px;justify-content:center; }
+.btn {
+  background:none; border:1px solid #2a5a6a; color:#5a9aaa;
+  font-family:'Courier New',monospace; font-size:11px; letter-spacing:5px;
+  padding:13px 28px; cursor:pointer; text-transform:uppercase;
+  transition:border-color .3s,color .3s,box-shadow .3s;
+}
+.btn:hover { border-color:#3a7a90;color:#5aafbe; box-shadow:0 0 18px rgba(50,130,160,.12); }
+.btn:active { transform:scale(.98); }
+.btn:disabled { opacity:.3;cursor:not-allowed; }
+.btn.accent { border-color:#2e6040;color:#5aaa70; }
+.btn.accent:hover { border-color:#3a8050;color:#5aaa70;box-shadow:0 0 18px rgba(50,150,80,.12); }
+
+/* ── SCHEDULE SECTION ───────────────────────── */
+#scheduleSection {
+  width:100%;
+  opacity:0;
+  transform:translateY(16px);
+  pointer-events:none;
+  position:absolute;
+  text-align:left;
+  padding:0 4px;
+  transition:opacity .3s,transform .3s;
+}
+#scheduleSection.visible { opacity:1;transform:none;pointer-events:all; }
+
+.sched-header {
+  font-size:9px;letter-spacing:5px;color:#4a8090;text-transform:uppercase;
+  margin-bottom:6px;
+}
+.sched-title {
+  font-size:15px;letter-spacing:4px;color:#6aaa80;
+  margin-bottom:22px;
+}
+.sched-list { list-style:none;margin-bottom:28px; }
+.sched-item {
+  display:flex;gap:20px;align-items:baseline;
+  padding:9px 0;
+  border-bottom:1px solid #0d1e28;
+  opacity:0;
+  transform:translateX(-10px);
+  transition:opacity .35s,transform .35s;
+}
+.sched-item.show { opacity:1;transform:none; }
+.sched-time { font-size:12px;letter-spacing:2px;color:#5a9aaa;min-width:46px; }
+.sched-act  { font-size:14px;letter-spacing:1px;color:#90c0cc;line-height:1.4; }
+.sched-tag  { font-size:9px;letter-spacing:2px;color:#4a7888; margin-left:auto; }
+
+.sched-note {
+  font-size:9px;letter-spacing:3px;color:#4a7888;text-transform:uppercase;
+  margin-bottom:22px;
+}
+.sched-btn-row { display:flex;gap:12px; }
+
+/* ── OVERLAYS ───────────────────────────────── */
+#flash { position:fixed;inset:0;background:white;opacity:0;pointer-events:none;z-index:400;mix-blend-mode:screen; }
+.g-bar { position:fixed;left:0;right:0;height:2px;background:rgba(80,180,200,.3);opacity:0;pointer-events:none;z-index:200; }
+
+/* strip */
+.strip {
+  position:fixed;left:0;right:0;height:24px;overflow:hidden;
+  display:flex;align-items:center;opacity:.12;pointer-events:none;z-index:5;
+}
+.strip-inner { white-space:nowrap;font-size:9px;letter-spacing:3px;color:var(--dim);animation:scrollL 24s linear infinite; }
+@keyframes scrollL { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+.strip.bot { top:auto;bottom:0;opacity:.08; }
+
+/* footer */
+.footer {
+  position:fixed;bottom:16px;left:0;right:0;text-align:center;
+  font-size:9px;letter-spacing:3px;color:#0f2028;text-transform:uppercase;
+  pointer-events:none;z-index:10;
+}
+
+@media(max-width:760px){
+  body{flex-direction:column;overflow:auto;}
+  .left-panel,.right-panel{width:100%;height:auto;border:none;padding:32px 24px;}
+  .left-panel{border-bottom:1px solid #0e2530;padding-bottom:28px;}
+  #watchCanvas{max-width:280px;}
+}
+</style>
+</head>
+<body>
+
+<div class="strip"><div class="strip-inner" id="topStrip"></div></div>
+<div class="strip bot"><div class="strip-inner" id="botStrip"></div></div>
+<div id="flash"></div>
+<div class="g-bar" id="gb1"></div>
+<div class="g-bar" id="gb2"></div>
+
+<!-- ── LEFT: 3D WATCH ── -->
+<div class="left-panel">
+  <canvas id="watchCanvas"></canvas>
+  <div class="watch-title">人生重開錶 · 迴圈控制裝置</div>
+</div>
+
+<!-- ── RIGHT: COUNTER + SCHEDULE ── -->
+<div class="right-panel">
+
+  <!-- Counter view -->
+  <div id="counterSection">
+    <div class="sys-header">LOOP OS v.∞ &nbsp;·&nbsp; 迴圈控制系統</div>
+    <div class="frozen-date">20— —&nbsp;·&nbsp;04&nbsp;·&nbsp;15&nbsp;&nbsp;永久</div>
+
+    <div class="ctr-label">本日已重複次數</div>
+    <div id="loopCounter">8,247</div>
+    <div class="ctr-unit">次　LOOPS</div>
+
+    <div class="clock-wrap">
+      <div class="clock-face">
+        <div class="hand hand-h" id="hH"></div>
+        <div class="hand hand-m" id="hM"></div>
+        <div class="hand hand-s" id="hS"></div>
+        <div class="clock-dot"></div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-lbl">消耗人生</div>
+        <div class="stat-val" id="statYrs">22.6 年</div>
+      </div>
+      <div class="stat">
+        <div class="stat-lbl">今日進度</div>
+        <div class="stat-val" id="statPct">—%</div>
+      </div>
+      <div class="stat">
+        <div class="stat-lbl">明天</div>
+        <div class="stat-val null">無</div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" id="resetBtn" onclick="triggerReset()">重　開　今　日</button>
+      <button class="btn accent" id="schedBtn" onclick="openSchedule()">隨　機　行　程</button>
+    </div>
+  </div>
+
+  <!-- Schedule view -->
+  <div id="scheduleSection">
+    <div class="sched-header">RANDOM SCHEDULE &nbsp;·&nbsp; 第 <span id="schedGen">1</span> 次生成</div>
+    <div class="sched-title">今日行程已分配</div>
+
+    <ul class="sched-list" id="schedList"></ul>
+
+    <div class="sched-note">（明日重置後，此行程將永遠消失）</div>
+    <div class="sched-btn-row">
+      <button class="btn accent" onclick="closeSchedule()">接　受　今　日　行　程</button>
+      <button class="btn" onclick="regenerateSchedule()">再　抽　一　次</button>
+    </div>
+  </div>
+
+</div><!-- right-panel -->
+
+<div class="footer">死亡不是終結，只是快轉 &nbsp;·&nbsp; 每日強制重置 00:00 &nbsp;·&nbsp; 無法登出</div>
+
+<!-- ── THREE.JS ── -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════
+const BASE_COUNT = 8247;
+let loopCount = BASE_COUNT;
+let schedGenCount = 0;
+let inSchedule = false;
+
+// ═══════════════════════════════════════
+//  STRIPS
+// ═══════════════════════════════════════
+const TOP_TEXT = "今天 · 今天 · 今天 · 今天 · 今天 · 今天 · 今天 · 今天 · 今天 · 今天 · 今天 · 今天 · ";
+const BOT_TEXT = "04.15  04.15  04.15  04.15  04.15  04.15  04.15  04.15  04.15  04.15  04.15  ";
+document.getElementById('topStrip').textContent = TOP_TEXT.repeat(4);
+document.getElementById('botStrip').textContent = BOT_TEXT.repeat(6);
+
+// ═══════════════════════════════════════
+//  CLOCK HANDS
+// ═══════════════════════════════════════
+function tickClock() {
+  const now = new Date();
+  const ms = now.getMilliseconds();
+  const s  = now.getSeconds() + ms / 1000;
+  const m  = now.getMinutes() + s / 60;
+  const h  = (now.getHours() % 12) + m / 60;
+  document.getElementById('hS').style.transform = `rotate(${s*6}deg)`;
+  document.getElementById('hM').style.transform = `rotate(${m*6}deg)`;
+  document.getElementById('hH').style.transform = `rotate(${h*30}deg)`;
+  const pct = (now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds()) / 86400;
+  document.getElementById('statPct').textContent = (pct*100).toFixed(1)+'%';
+}
+setInterval(tickClock, 50);
+tickClock();
+
+// ═══════════════════════════════════════
+//  COUNTER
+// ═══════════════════════════════════════
+function fmtN(n){ return n.toLocaleString('zh-TW'); }
+function updateCounter(){
+  document.getElementById('loopCounter').textContent = fmtN(loopCount);
+  document.getElementById('statYrs').textContent = (loopCount/365.25).toFixed(1)+' 年';
+}
+setInterval(() => { if(!inSchedule){ loopCount++; updateCounter(); } }, 28000);
+updateCounter();
+
+// ═══════════════════════════════════════
+//  GLITCH
+// ═══════════════════════════════════════
+function doGlitch(intense){
+  const el = document.getElementById('loopCounter');
+  el.classList.remove('glitching'); void el.offsetWidth; el.classList.add('glitching');
+  el.addEventListener('animationend', ()=> el.classList.remove('glitching'), {once:true});
+  [gb1,gb2].forEach(b=>{
+    b.style.top = (Math.random()*92)+'vh';
+    b.style.opacity = intense?'0.55':'0.22';
+    b.style.height  = intense?'4px':'2px';
+    setTimeout(()=>b.style.opacity='0', intense?200:100);
+  });
+}
+const gb1 = document.getElementById('gb1');
+const gb2 = document.getElementById('gb2');
+(function schedGlitch(){
+  setTimeout(()=>{ doGlitch(false); schedGlitch(); }, 1800+Math.random()*5000);
+})();
+
+// ═══════════════════════════════════════
+//  RESET BUTTON
+// ═══════════════════════════════════════
+function triggerReset(){
+  const btn = document.getElementById('resetBtn');
+  if(btn.disabled) return;
+  btn.disabled = true;
+  const flash = document.getElementById('flash');
+  flash.style.transition='none'; flash.style.opacity='0.1';
+  setTimeout(()=>{ flash.style.transition='opacity 1s'; flash.style.opacity='0'; },100);
+  let g=0; const gi=setInterval(()=>{ doGlitch(true); if(++g>=6) clearInterval(gi); },90);
+  const el = document.getElementById('loopCounter');
+  let f=0;
+  const sc=setInterval(()=>{
+    el.textContent = fmtN(loopCount + Math.floor(Math.random()*60000));
+    if(++f>=10){ clearInterval(sc); loopCount++; updateCounter();
+      setTimeout(()=>btn.disabled=false,700); }
+  },65);
+}
+
+// ═══════════════════════════════════════
+//  RANDOM SCHEDULE
+// ═══════════════════════════════════════
+const ACTIVITIES = [
+  { act:"搭一班你從來沒搭過的公車，不管它去哪裡", tag:"移動" },
+  { act:"在最近的公園，坐到你覺得夠了為止",        tag:"靜止" },
+  { act:"點一份菜單上你從沒點過的食物",             tag:"飲食" },
+  { act:"走一條沒走過的路，允許自己迷路",           tag:"探索" },
+  { act:"和一個陌生人說話，超過五分鐘",             tag:"連結" },
+  { act:"去圖書館，隨手取一本書，翻開第47頁",       tag:"閱讀" },
+  { act:"在日落前找到三件讓你感覺美的事物",         tag:"觀察" },
+  { act:"打電話給一個超過一年沒說話的人",           tag:"聯繫" },
+  { act:"學一個你下次八成用不到的小技能",           tag:"學習" },
+  { act:"今天只用左手完成所有事",                   tag:"挑戰" },
+  { act:"在咖啡廳坐兩小時，不滑手機，只是看人",    tag:"觀察" },
+  { act:"試著把今天的心情畫下來，不管畫得多醜",    tag:"創作" },
+  { act:"吃飯時什麼都不做，只是慢慢吃",             tag:"感受" },
+  { act:"想像你是第一次來到這個城市的旅人",         tag:"想像" },
+  { act:"做一件你已說了一百次「等以後」的事",       tag:"行動" },
+  { act:"隨機打開地圖，走到你手指指到的地方",       tag:"隨機" },
+  { act:"把你最珍貴的東西借給一個你信任的人",       tag:"信任" },
+  { act:"今天對每個服務你的人，認真看著他的眼睛",  tag:"在場" },
+  { act:"找出你最舊的一張照片，看著它十分鐘",       tag:"記憶" },
+  { act:"用你不慣用的手，給自己寫一封信",           tag:"書寫" },
+  { act:"去逛一家你從未進去過的店，什麼都不買",     tag:"探索" },
+  { act:"今天至少讓自己大笑一次，不管多荒謬",       tag:"情感" },
+  { act:"在天黑後，獨自在街上走三十分鐘",           tag:"夜行" },
+  { act:"今天什麼都不計畫，讓事情自己發生",         tag:"放手" },
+];
+
+const TIMES = ["07:30","08:15","09:00","10:30","11:45","12:00","13:30",
+               "14:00","15:15","16:30","17:00","18:30","19:00","20:15","21:00"];
+
+function openSchedule(){
+  inSchedule = true;
+  schedGenCount++;
+  document.getElementById('schedGen').textContent = schedGenCount;
+  document.getElementById('counterSection').classList.add('hidden');
+  buildSchedule();
+  const ss = document.getElementById('scheduleSection');
+  ss.classList.add('visible');
+  // stagger items
+  setTimeout(()=>{
+    document.querySelectorAll('.sched-item').forEach((el,i)=>{
+      setTimeout(()=>el.classList.add('show'), i*120);
+    });
+  }, 100);
+  doGlitch(true);
+}
+
+function closeSchedule(){
+  document.getElementById('scheduleSection').classList.remove('visible');
+  document.querySelectorAll('.sched-item').forEach(el=>el.classList.remove('show'));
+  setTimeout(()=>{
+    document.getElementById('counterSection').classList.remove('hidden');
+    inSchedule = false;
+  }, 280);
+}
+
+function regenerateSchedule(){
+  schedGenCount++;
+  document.getElementById('schedGen').textContent = schedGenCount;
+  document.querySelectorAll('.sched-item').forEach(el=>el.classList.remove('show'));
+  setTimeout(()=>{
+    buildSchedule();
+    setTimeout(()=>{
+      document.querySelectorAll('.sched-item').forEach((el,i)=>{
+        setTimeout(()=>el.classList.add('show'), i*100);
+      });
+    },50);
+  },200);
+  doGlitch(false);
+}
+
+function buildSchedule(){
+  const list = document.getElementById('schedList');
+  list.innerHTML = '';
+  const count = 4 + Math.floor(Math.random()*2); // 4 or 5 items
+  const pool = [...ACTIVITIES].sort(()=>Math.random()-.5).slice(0,count);
+  const times = [...TIMES].sort(()=>Math.random()-.5).sort((a,b)=>a.localeCompare(b)).slice(0,count);
+  pool.forEach((item,i)=>{
+    const li = document.createElement('li');
+    li.className = 'sched-item';
+    li.innerHTML = `<span class="sched-time">${times[i]}</span>
+                    <span class="sched-act">${item.act}</span>
+                    <span class="sched-tag">${item.tag}</span>`;
+    list.appendChild(li);
+  });
+}
+
+// ═══════════════════════════════════════
+//  THREE.JS WATCH MODEL
+// ═══════════════════════════════════════
+(function initWatch(){
+  const canvas = document.getElementById('watchCanvas');
+  const W = canvas.parentElement.clientWidth * 0.72;
+  canvas.width  = W;
+  canvas.height = W;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setSize(W, W);
+  renderer.shadowMap.enabled = true;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  camera.position.set(0, 0, 5.5);
+
+  // Lighting
+  const ambient = new THREE.AmbientLight(0x1a2a38, 0.8);
+  scene.add(ambient);
+  const keyLight = new THREE.DirectionalLight(0x7ab8d8, 2.2);
+  keyLight.position.set(2, 3, 4);
+  scene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0x0a1828, 0.6);
+  fillLight.position.set(-3, -1, 2);
+  scene.add(fillLight);
+  const rimLight = new THREE.DirectionalLight(0x2040a0, 0.5);
+  rimLight.position.set(0, -3, -2);
+  scene.add(rimLight);
+
+  // ── Watch body ──────────────────────
+  function roundedRectShape(w, h, r){
+    const s = new THREE.Shape();
+    s.moveTo(-w/2+r, -h/2);
+    s.lineTo( w/2-r, -h/2);
+    s.quadraticCurveTo( w/2,-h/2, w/2,-h/2+r);
+    s.lineTo( w/2, h/2-r);
+    s.quadraticCurveTo( w/2, h/2, w/2-r, h/2);
+    s.lineTo(-w/2+r, h/2);
+    s.quadraticCurveTo(-w/2, h/2,-w/2, h/2-r);
+    s.lineTo(-w/2,-h/2+r);
+    s.quadraticCurveTo(-w/2,-h/2,-w/2+r,-h/2);
+    return s;
+  }
+
+  const bodyShape = roundedRectShape(1.15, 1.35, 0.18);
+  const extCfg = { depth:0.22, bevelEnabled:true, bevelThickness:0.025, bevelSize:0.025, bevelSegments:5 };
+  const bodyGeo = new THREE.ExtrudeGeometry(bodyShape, extCfg);
+  bodyGeo.center();
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x131820, metalness:0.92, roughness:0.22, envMapIntensity:1
+  });
+  const watchBody = new THREE.Mesh(bodyGeo, bodyMat);
+  watchBody.position.z = -0.11;
+  scene.add(watchBody);
+
+  // ── Screen bezel (inner indent) ──────
+  const bezelShape = roundedRectShape(0.96, 1.12, 0.12);
+  const bezelCfg = { depth:0.04, bevelEnabled:false };
+  const bezelGeo = new THREE.ExtrudeGeometry(bezelShape, bezelCfg);
+  bezelGeo.center();
+  const bezelMat = new THREE.MeshStandardMaterial({ color:0x080c10, metalness:0.5, roughness:0.6 });
+  const bezel = new THREE.Mesh(bezelGeo, bezelMat);
+  bezel.position.z = 0.11;
+  scene.add(bezel);
+
+  // ── Screen texture (dynamic — redraws every second) ──────────
+  const _sc = document.createElement('canvas');
+  _sc.width = 256; _sc.height = 310;
+  const _sx = _sc.getContext('2d');
+  const _stex = new THREE.CanvasTexture(_sc);
+
+  function drawWatchScreen() {
+    const x = _sx, W = 256, H = 310;
+
+    // Background
+    x.fillStyle = '#030710';
+    x.fillRect(0, 0, W, H);
+
+    // Subtle grid
+    x.strokeStyle = 'rgba(18,50,65,0.3)';
+    x.lineWidth = 0.5;
+    for(let i=0;i<W;i+=20){ x.beginPath(); x.moveTo(i,0); x.lineTo(i,H); x.stroke(); }
+    for(let i=0;i<H;i+=20){ x.beginPath(); x.moveTo(0,i); x.lineTo(W,i); x.stroke(); }
+
+    // Top label
+    x.fillStyle = '#2a5565';
+    x.font = '11px Courier New';
+    x.textAlign = 'center';
+    x.fillText('人生重開錶', W/2, 22);
+    x.strokeStyle = '#0c1e2a';
+    x.lineWidth = 1;
+    x.beginPath(); x.moveTo(16,30); x.lineTo(W-16,30); x.stroke();
+
+    // ── CURRENT TIME ──────────────────
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2,'0');
+    const mm = String(now.getMinutes()).padStart(2,'0');
+    const ss = String(now.getSeconds()).padStart(2,'0');
+
+    x.fillStyle = '#78b8cc';
+    x.font = 'bold 52px Courier New';
+    x.textAlign = 'center';
+    x.fillText(`${hh}:${mm}`, W/2, 90);
+
+    x.fillStyle = '#3a7888';
+    x.font = 'bold 22px Courier New';
+    x.fillText(ss, W/2, 116);
+
+    // Frozen date (same day forever)
+    x.fillStyle = '#1e3e50';
+    x.font = '10px Courier New';
+    x.fillText('20——  ·  04  ·  15   永久', W/2, 136);
+
+    // Divider
+    x.strokeStyle = '#0c1e2a';
+    x.lineWidth = 1;
+    x.beginPath(); x.moveTo(16,146); x.lineTo(W-16,146); x.stroke();
+
+    // ── LOOP COUNT ────────────────────
+    x.fillStyle = '#1e4255';
+    x.font = '10px Courier New';
+    x.textAlign = 'center';
+    x.fillText('LOOP  COUNT', W/2, 164);
+
+    x.fillStyle = '#90cad8';
+    x.font = 'bold 36px Courier New';
+    x.fillText(loopCount.toLocaleString('zh-TW'), W/2, 204);
+
+    x.fillStyle = '#2a5565';
+    x.font = '12px Courier New';
+    x.fillText('次', W/2, 222);
+
+    // Divider
+    x.strokeStyle = '#0c1e2a';
+    x.lineWidth = 1;
+    x.beginPath(); x.moveTo(16,232); x.lineTo(W-16,232); x.stroke();
+
+    // ── TWO MINI ICONS ────────────────
+    const lx = W/4, rx = 3*W/4, iy = 272, r = 22;
+
+    // Left: void circle
+    x.strokeStyle = '#285060';
+    x.lineWidth = 1.5;
+    x.beginPath(); x.arc(lx, iy, r, 0, Math.PI*2); x.stroke();
+    x.strokeStyle = '#142530';
+    x.lineWidth = 0.8;
+    x.beginPath(); x.arc(lx, iy, r*.5, 0, Math.PI*2); x.stroke();
+    x.fillStyle = '#1a3e50';
+    x.font = '10px Courier New';
+    x.textAlign = 'center';
+    x.fillText('重置', lx, iy + r + 14);
+
+    // Right: noise box
+    x.strokeStyle = '#1a3548';
+    x.lineWidth = 1;
+    x.strokeRect(rx-r, iy-r, r*2, r*2);
+    for(let p=0;p<300;p++){
+      const px=rx-r+Math.random()*r*2;
+      const py=iy-r+Math.random()*r*2;
+      const v=Math.random();
+      x.fillStyle = v>0.65 ? `rgba(50,145,165,${v*.5})` : `rgba(6,18,28,${v})`;
+      x.fillRect(px, py, 1, 1);
+    }
+    x.fillStyle = '#1a3e50';
+    x.font = '10px Courier New';
+    x.fillText('隨機', rx, iy + r + 14);
+
+    _stex.needsUpdate = true;
+  }
+
+  drawWatchScreen();
+  setInterval(drawWatchScreen, 1000);
+
+  const screenGeo = new THREE.PlaneGeometry(0.88, 1.04);
+  const screenMat = new THREE.MeshStandardMaterial({
+    map: _stex,
+    emissive: new THREE.Color(0x0a1828),
+    emissiveIntensity: 0.6,
+    roughness: 0.15,
+    metalness: 0.1
+  });
+  const screenMesh = new THREE.Mesh(screenGeo, screenMat);
+  screenMesh.position.z = 0.135;
+  scene.add(screenMesh);
+
+  // Screen edge glow (thin emissive border)
+  const edgeGeo = new THREE.PlaneGeometry(0.91,1.07);
+  const edgeMat = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    emissive: new THREE.Color(0x0a2a3a),
+    emissiveIntensity: 0.4,
+  });
+  const edgeMesh = new THREE.Mesh(edgeGeo, edgeMat);
+  edgeMesh.position.z = 0.133;
+  scene.add(edgeMesh);
+
+  // ── Crown button (right side) ────────
+  const crownGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.18, 12);
+  const crownMat = new THREE.MeshStandardMaterial({ color:0x1e2830, metalness:0.95, roughness:0.15 });
+  const crown = new THREE.Mesh(crownGeo, crownMat);
+  crown.rotation.z = Math.PI/2;
+  crown.position.set(0.63, 0.2, 0);
+  scene.add(crown);
+
+  // Side button
+  const sideBtnGeo = new THREE.BoxGeometry(0.08, 0.22, 0.14);
+  const sideBtnMat = new THREE.MeshStandardMaterial({ color:0x192028, metalness:0.88, roughness:0.25 });
+  const sideBtn = new THREE.Mesh(sideBtnGeo, sideBtnMat);
+  sideBtn.position.set(0.625, -0.2, 0);
+  scene.add(sideBtn);
+
+  // ── Strap (top) ──────────────────────
+  function makeStrap(yPos){
+    const g = new THREE.Group();
+    // Main strap band
+    const sg = new THREE.BoxGeometry(0.86, 0.62, 0.14);
+    const sm = new THREE.MeshStandardMaterial({
+      color:0x0a0f10, metalness:0.05, roughness:0.92
+    });
+    const s = new THREE.Mesh(sg, sm);
+    g.add(s);
+
+    // Strap texture lines (subtle)
+    const lg = new THREE.BoxGeometry(0.8, 0.005, 0.15);
+    const lm = new THREE.MeshStandardMaterial({ color:0x050a0c, roughness:1 });
+    for(let i=-3;i<=3;i++){
+      const line = new THREE.Mesh(lg, lm);
+      line.position.y = i * 0.085;
+      line.position.z = 0.002;
+      g.add(line);
+    }
+
+    // Clasp
+    const cg = new THREE.BoxGeometry(0.3, 0.06, 0.16);
+    const cm = new THREE.MeshStandardMaterial({ color:0x1a2830, metalness:0.9, roughness:0.2 });
+    const clasp = new THREE.Mesh(cg, cm);
+    clasp.position.y = yPos > 0 ? 0.22 : -0.22;
+    g.add(clasp);
+
+    g.position.y = yPos;
+    return g;
+  }
+  scene.add(makeStrap(1.0));
+  scene.add(makeStrap(-1.0));
+
+  // ── Micro-needle hint (back bottom) ──
+  // Small detail on back suggesting the hidden mechanism
+  const needleGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.06, 8);
+  const needleMat = new THREE.MeshStandardMaterial({ color:0x384858, metalness:0.95, roughness:0.1 });
+  const needle = new THREE.Mesh(needleGeo, needleMat);
+  needle.rotation.x = Math.PI/2;
+  needle.position.z = -0.145;
+  scene.add(needle);
+
+  // ── Rotate group ─────────────────────
+  // (all meshes already added to scene above)
+  // Actually let's just rotate the whole scene subtly
+  let autoRotY = 0;
+  let autoRotX = 0.12; // slight tilt back
+  let mouseX = 0, mouseY = 0;
+  let targetX = 0, targetY = 0;
+
+  canvas.addEventListener('mousemove', e=>{
+    const r = canvas.getBoundingClientRect();
+    mouseX = ((e.clientX - r.left)/r.width  - .5) * .8;
+    mouseY = ((e.clientY - r.top) /r.height - .5) * .5;
+  });
+  canvas.addEventListener('mouseleave', ()=>{ mouseX=0; mouseY=0; });
+
+  // ── Render loop ──────────────────────
+  function renderWatch(){
+    requestAnimationFrame(renderWatch);
+    autoRotY += 0.004;
+    targetX += (mouseY - targetX) * 0.05;
+    targetY += (mouseX - targetY) * 0.05;
+
+    scene.rotation.y = autoRotY + targetY;
+    scene.rotation.x = autoRotX + targetX;
+
+    renderer.render(scene, camera);
+  }
+  renderWatch();
+
+  // Resize
+  window.addEventListener('resize', ()=>{
+    const nW = canvas.parentElement.clientWidth * 0.72;
+    canvas.width = nW; canvas.height = nW;
+    renderer.setSize(nW, nW);
+  });
+})();
+</script>
+</body>
+</html>
