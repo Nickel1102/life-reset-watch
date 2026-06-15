@@ -363,53 +363,14 @@ function buildSchedule(){
     function(gltf){
       const model=gltf.scene;
 
-      // ── Auto-fit ─────────────────────────────────────────────────────
+      // ── Auto-fit，保留 GLB 原有全部材質，只做縮放置中 ───────────────
       const box=new THREE.Box3().setFromObject(model);
       const center=box.getCenter(new THREE.Vector3());
       const size=box.getSize(new THREE.Vector3());
-      const scale=4.2/Math.max(size.x,size.y,size.z);
+      const scale=5.0/Math.max(size.x,size.y,size.z);
       model.scale.setScalar(scale);
       model.position.set(-center.x*scale,-center.y*scale,-center.z*scale);
       scene.add(model);
-
-      // ── 收集所有 mesh，依包圍盒體積排序 ─────────────────────────────
-      const meshInfos=[];
-      model.traverse(child=>{
-        if(!child.isMesh)return;
-        const mb=new THREE.Box3().setFromObject(child);
-        const ms=mb.getSize(new THREE.Vector3());
-        const vol=ms.x*ms.y*ms.z;
-        // 支援單一或陣列材質
-        const mats=Array.isArray(child.material)?child.material:[child.material];
-        const isGreen=mats.some(m=>m&&m.color&&m.color.g>0.4&&m.color.r<0.4&&m.color.b<0.4);
-        const n=child.name.toLowerCase();
-        const isNamed=n.includes('screen')||n.includes('display')||n.includes('face')||n.includes('dial')||n.includes('glass')||n.includes('lcd');
-        meshInfos.push({child,vol,isGreen,isNamed});
-      });
-      meshInfos.sort((a,b)=>b.vol-a.vol);
-
-      // ── 決定哪個是螢幕 mesh ──────────────────────────────────────────
-      // 優先：綠色 or 名稱符合；都沒有就取最大的
-      const screenEntry=meshInfos.find(m=>m.isGreen||m.isNamed)||meshInfos[0];
-
-      // ── 套用材質 ─────────────────────────────────────────────────────
-      meshInfos.forEach(m=>{
-        if(m===screenEntry){
-          m.child.material=new THREE.MeshStandardMaterial({
-            map:_stex,
-            emissive:new THREE.Color(0x030a14),
-            emissiveIntensity:0.4,
-            roughness:0.05,
-            metalness:0
-          });
-        } else {
-          m.child.material=new THREE.MeshStandardMaterial({
-            color:new THREE.Color(0x1a2a38),
-            metalness:0.9,
-            roughness:0.15
-          });
-        }
-      });
 
       loading.style.opacity='0';
       setTimeout(()=>loading.style.display='none',500);
