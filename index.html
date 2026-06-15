@@ -308,10 +308,10 @@ function buildSchedule(){
   const camera=new THREE.PerspectiveCamera(38,1,0.1,100);
   camera.position.set(0,0,5.5);
 
-  scene.add(new THREE.AmbientLight(0x1a2a38,3.0));
-  const key=new THREE.DirectionalLight(0x8ac8e0,2.4); key.position.set(2,3,4); scene.add(key);
-  const fill=new THREE.DirectionalLight(0x0a1828,0.7); fill.position.set(-3,-1,2); scene.add(fill);
-  const rim=new THREE.DirectionalLight(0x2040c0,0.6); rim.position.set(0,-3,-2); scene.add(rim);
+  scene.add(new THREE.AmbientLight(0x1a2a38,5.0));
+  const key=new THREE.DirectionalLight(0x8ac8e0,4.0); key.position.set(2,3,4); scene.add(key);
+  const fill=new THREE.DirectionalLight(0x0a1828,1.5); fill.position.set(-3,-1,2); scene.add(fill);
+  const rim=new THREE.DirectionalLight(0x2040c0,1.2); rim.position.set(0,-3,-2); scene.add(rim);
 
   // Dynamic screen canvas (time + loop count)
   const _sc=document.createElement('canvas'); _sc.width=256; _sc.height=310;
