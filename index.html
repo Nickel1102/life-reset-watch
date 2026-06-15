@@ -362,34 +362,64 @@ function buildSchedule(){
   loader.load('./watch.glb',
     function(gltf){
       const model=gltf.scene;
-      // Auto-fit
+
+      // ── Orientation fix ──────────────────────────────────────────────
+      // Blender 匯出的模型錶面通常朝上(+Y)，需要旋轉 -90° 讓錶面朝鏡頭(+Z)
+      model.rotation.x=-Math.PI/2;
+      model.updateMatrixWorld(true);
+
+      // ── Auto-fit (計算旋轉後的邊界框) ───────────────────────────────
       const box=new THREE.Box3().setFromObject(model);
       const center=box.getCenter(new THREE.Vector3());
       const size=box.getSize(new THREE.Vector3());
       const scale=2.8/Math.max(size.x,size.y,size.z);
       model.scale.setScalar(scale);
-      model.position.sub(center.multiplyScalar(scale));
+      model.position.set(-center.x*scale,-center.y*scale,-center.z*scale);
       scene.add(model);
-      // Try to inject screen texture
+
+      // ── 螢幕紋理注入 ────────────────────────────────────────────────
+      // 優先找名稱符合的 mesh；若找不到，找綠色佔位材質（Blender 常見測試色）
       let screenFound=false;
       model.traverse(child=>{
         if(!child.isMesh)return;
         const n=child.name.toLowerCase();
-        if(n.includes('screen')||n.includes('display')||n.includes('glass')||n.includes('dial')||n.includes('face')||n.includes('lcd')){
-          child.material=new THREE.MeshStandardMaterial({map:_stex,emissive:new THREE.Color(0x0a1828),emissiveIntensity:0.5,roughness:0.1,metalness:0});
+        const mc=child.material&&child.material.color;
+        const isGreen=mc&&mc.g>0.45&&mc.r<0.35&&mc.b<0.35;
+        const isNamed=n.includes('screen')||n.includes('display')||n.includes('glass')||n.includes('dial')||n.includes('face')||n.includes('lcd');
+        if(isGreen||isNamed){
+          child.material=new THREE.MeshStandardMaterial({
+            map:_stex,
+            emissive:new THREE.Color(0x030a14),
+            emissiveIntensity:0.4,
+            roughness:0.05,
+            metalness:0
+          });
           screenFound=true;
         }
       });
-      // Fallback overlay plane
+
+      // ── Fallback overlay (以正確的世界座標定位) ──────────────────────
       if(!screenFound){
-        const fz=box.max.z*scale+0.02;
-        const pw=Math.min(size.x,size.y)*scale*0.72;
+        model.updateMatrixWorld(true);
+        const wb=new THREE.Box3().setFromObject(model);
+        const fz=wb.max.z+0.04;
+        const pw=Math.min(wb.max.x-wb.min.x,wb.max.y-wb.min.y)*0.72;
+        const cx=(wb.max.x+wb.min.x)/2;
+        const cy=(wb.max.y+wb.min.y)/2;
         const plane=new THREE.Mesh(
           new THREE.PlaneGeometry(pw,pw*1.2),
-          new THREE.MeshStandardMaterial({map:_stex,emissive:new THREE.Color(0x0a1828),emissiveIntensity:0.5,roughness:0.1,transparent:true})
+          new THREE.MeshStandardMaterial({
+            map:_stex,
+            emissive:new THREE.Color(0x030a14),
+            emissiveIntensity:0.4,
+            roughness:0.05,
+            transparent:true
+          })
         );
-        plane.position.z=fz; scene.add(plane);
+        plane.position.set(cx,cy,fz);
+        scene.add(plane);
       }
+
       loading.style.opacity='0';
       setTimeout(()=>loading.style.display='none',500);
     },
