@@ -363,62 +363,53 @@ function buildSchedule(){
     function(gltf){
       const model=gltf.scene;
 
-      // ── Orientation fix ──────────────────────────────────────────────
-      // Blender 匯出的模型錶面通常朝上(+Y)，需要旋轉 -90° 讓錶面朝鏡頭(+Z)
-      model.rotation.x=-Math.PI/2;
-      model.updateMatrixWorld(true);
-
-      // ── Auto-fit (計算旋轉後的邊界框) ───────────────────────────────
+      // ── Auto-fit ─────────────────────────────────────────────────────
       const box=new THREE.Box3().setFromObject(model);
       const center=box.getCenter(new THREE.Vector3());
       const size=box.getSize(new THREE.Vector3());
-      const scale=2.8/Math.max(size.x,size.y,size.z);
+      const scale=4.2/Math.max(size.x,size.y,size.z);
       model.scale.setScalar(scale);
       model.position.set(-center.x*scale,-center.y*scale,-center.z*scale);
       scene.add(model);
 
-      // ── 螢幕紋理注入 ────────────────────────────────────────────────
-      // 優先找名稱符合的 mesh；若找不到，找綠色佔位材質（Blender 常見測試色）
-      let screenFound=false;
+      // ── 收集所有 mesh，依包圍盒體積排序 ─────────────────────────────
+      const meshInfos=[];
       model.traverse(child=>{
         if(!child.isMesh)return;
+        const mb=new THREE.Box3().setFromObject(child);
+        const ms=mb.getSize(new THREE.Vector3());
+        const vol=ms.x*ms.y*ms.z;
+        // 支援單一或陣列材質
+        const mats=Array.isArray(child.material)?child.material:[child.material];
+        const isGreen=mats.some(m=>m&&m.color&&m.color.g>0.4&&m.color.r<0.4&&m.color.b<0.4);
         const n=child.name.toLowerCase();
-        const mc=child.material&&child.material.color;
-        const isGreen=mc&&mc.g>0.45&&mc.r<0.35&&mc.b<0.35;
-        const isNamed=n.includes('screen')||n.includes('display')||n.includes('glass')||n.includes('dial')||n.includes('face')||n.includes('lcd');
-        if(isGreen||isNamed){
-          child.material=new THREE.MeshStandardMaterial({
+        const isNamed=n.includes('screen')||n.includes('display')||n.includes('face')||n.includes('dial')||n.includes('glass')||n.includes('lcd');
+        meshInfos.push({child,vol,isGreen,isNamed});
+      });
+      meshInfos.sort((a,b)=>b.vol-a.vol);
+
+      // ── 決定哪個是螢幕 mesh ──────────────────────────────────────────
+      // 優先：綠色 or 名稱符合；都沒有就取最大的
+      const screenEntry=meshInfos.find(m=>m.isGreen||m.isNamed)||meshInfos[0];
+
+      // ── 套用材質 ─────────────────────────────────────────────────────
+      meshInfos.forEach(m=>{
+        if(m===screenEntry){
+          m.child.material=new THREE.MeshStandardMaterial({
             map:_stex,
             emissive:new THREE.Color(0x030a14),
             emissiveIntensity:0.4,
             roughness:0.05,
             metalness:0
           });
-          screenFound=true;
+        } else {
+          m.child.material=new THREE.MeshStandardMaterial({
+            color:new THREE.Color(0x1a2a38),
+            metalness:0.9,
+            roughness:0.15
+          });
         }
       });
-
-      // ── Fallback overlay (以正確的世界座標定位) ──────────────────────
-      if(!screenFound){
-        model.updateMatrixWorld(true);
-        const wb=new THREE.Box3().setFromObject(model);
-        const fz=wb.max.z+0.04;
-        const pw=Math.min(wb.max.x-wb.min.x,wb.max.y-wb.min.y)*0.72;
-        const cx=(wb.max.x+wb.min.x)/2;
-        const cy=(wb.max.y+wb.min.y)/2;
-        const plane=new THREE.Mesh(
-          new THREE.PlaneGeometry(pw,pw*1.2),
-          new THREE.MeshStandardMaterial({
-            map:_stex,
-            emissive:new THREE.Color(0x030a14),
-            emissiveIntensity:0.4,
-            roughness:0.05,
-            transparent:true
-          })
-        );
-        plane.position.set(cx,cy,fz);
-        scene.add(plane);
-      }
 
       loading.style.opacity='0';
       setTimeout(()=>loading.style.display='none',500);
